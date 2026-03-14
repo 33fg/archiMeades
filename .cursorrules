@@ -1,0 +1,355 @@
+# Cursor Rules for Cognitive Fabric Project
+
+## Documentation Maintenance Rules
+
+### Canonical Documentation Structure
+
+The project maintains **10 canonical documents** in `documentation/`:
+
+1. **BRS.md** - Business Requirements Specification
+2. **SRS.md** - Software Requirements Specification
+3. **ARCHITECTURE.md** - System Architecture
+4. **FUNCTIONALITY.md** - System Functionality
+5. **DEVELOPMENT.md** - Development Guide
+6. **PROCESSES.md** - Internal Processes
+7. **REFERENCE.md** - Quick Reference
+8. **GUIDES.md** - Setup Guides
+9. **README.md** - Navigation and Overview
+10. **CHANGELOG.md** - Documentation Changelog
+
+### Automatic Documentation Updates
+
+**CRITICAL RULE**: Whenever code changes affect documentation, automatically:
+
+1. **Update the relevant canonical document(s)**
+2. **Update CHANGELOG.md** with the change
+3. **Update README.md** if navigation/structure changes
+4. **Update diagrams** in `documentation/diagrams/` by reverse engineering code changes
+
+### Documentation Update Workflow
+
+When user requests documentation updates OR when code changes are detected:
+
+#### Step 1: Analyze Code Changes
+- Review changed files
+- Identify affected documentation sections
+- Determine which canonical documents need updates
+
+#### Step 2: Update Canonical Documents
+- Update relevant sections in canonical documents
+- Preserve existing structure and formatting
+- Add new sections if needed
+- Remove outdated information
+
+#### Step 3: Update CHANGELOG.md
+- Add entry with date
+- Use format: `## YYYY-MM-DD - [Change Type]`
+- Describe what changed and why
+- Reference affected documents
+
+#### Step 4: Update README.md (if needed)
+- Update navigation if document structure changed
+- Update quick start if workflows changed
+- Update links if documents were renamed
+
+#### Step 5: Update Diagrams
+- Reverse engineer architecture from code:
+  - Analyze `server/analyst-api/src/` structure
+  - Analyze `apps/analyst-ui/public/js/` structure
+  - Update Mermaid diagrams in `documentation/diagrams/`
+- Update architecture diagrams based on:
+  - New routes/services
+  - New tools
+  - Changed data models
+  - Updated flows
+
+### Code-to-Documentation Mapping
+
+#### ARCHITECTURE.md Updates
+**Triggered by changes to:**
+- `server/analyst-api/src/routes/` - New/modified API routes
+- `server/analyst-api/src/services/` - New/modified services
+- `server/analyst-api/src/symbolic-tools/` - New/modified symbolic tools
+- Database schema changes in `server/shared/src/db.ts`
+- Tool registration in `server/analyst-api/src/routes/agent_browser.ts`
+
+**Update sections:**
+- Architecture Layers
+- Database Schema
+- Tool Architecture
+- Session & Episode Architecture
+
+#### FUNCTIONALITY.md Updates
+**Triggered by changes to:**
+- `apps/analyst-ui/public/js/tools/` - UI tool changes
+- `apps/analyst-ui/public/js/llm-tools/` - Research Agent changes
+- New features in UI components
+- New workflows
+
+**Update sections:**
+- Research Agent features
+- Core Tools
+- User Workflows
+- UI Components
+
+#### DEVELOPMENT.md Updates
+**Triggered by changes to:**
+- `package.json` - Dependency changes
+- `.env` files - Environment variable changes
+- `scripts/` - New utility scripts
+- API endpoint changes
+
+**Update sections:**
+- Environment Setup
+- Development Workflow
+- API Reference
+- Testing
+
+#### PROCESSES.md Updates
+**Triggered by changes to:**
+- `server/analyst-api/src/routes/browser.ts` - Chat/streaming changes
+- `apps/analyst-ui/public/js/llm-tools/research-agent-chat.js` - Frontend flow changes
+- Tool execution logic changes
+- Episode creation logic changes
+
+**Update sections:**
+- Prompt-to-Response Flow
+- Tool Execution Flow
+- Streaming & Response Handling
+- Episode Creation & Management
+
+#### SRS.md Updates
+**Triggered by:**
+- New functional requirements implemented
+- New tools added
+- API changes
+- Feature additions
+
+**Update sections:**
+- Functional Requirements
+- Non-Functional Requirements
+- System Interfaces
+
+#### REFERENCE.md Updates
+**Triggered by:**
+- New terminology
+- Database collection changes
+- Configuration changes
+- API changes
+
+**Update sections:**
+- Terminology
+- Database Collections
+- System Configuration
+
+### Diagram Update Rules
+
+#### When to Update Diagrams
+- New routes/services added
+- New tools registered
+- Database schema changes
+- Architecture layer changes
+- Flow changes (prompt-to-response, tool execution)
+
+#### Diagram Files in `documentation/diagrams/`
+- `*.mmd` files - Mermaid diagram source files
+- Update by analyzing code structure
+- Generate from code if diagrams don't exist
+
+#### Reverse Engineering Process
+1. **Analyze code structure**:
+   - Read route files to understand API structure
+   - Read service files to understand business logic
+   - Read tool registration to understand available tools
+   - Read database models to understand data structure
+
+2. **Generate/Update diagrams**:
+   - Architecture diagrams from route/service structure
+   - Flow diagrams from process code
+   - Database diagrams from schema
+   - Tool diagrams from tool registration
+
+3. **Update ARCHITECTURE.md**:
+   - Include updated diagrams
+   - Update architecture descriptions to match code
+
+### CHANGELOG.md Format
+
+```markdown
+## YYYY-MM-DD - [Change Type]
+
+### :rocket: New Feature / :bug: Bug Fix / :memo: Documentation / etc.
+
+- **Document**: [Document Name]
+- **Section**: [Section Name]
+- **Change**: [Description of change]
+- **Reason**: [Why change was made]
+- **Code Changes**: [Files changed]
+```
+
+### README.md Update Triggers
+
+Update README.md when:
+- Document structure changes
+- New documents added
+- Navigation needs updating
+- Quick start instructions change
+- Links break or change
+
+### Example: Adding a New Tool
+
+When a new tool is added:
+
+1. **Update ARCHITECTURE.md**:
+   - Add tool to Tool Architecture section
+   - Update tool categories
+   - Update architecture diagrams
+
+2. **Update FUNCTIONALITY.md**:
+   - Add tool to Core Tools section
+   - Add tool features
+   - Update workflows if needed
+
+3. **Update SRS.md**:
+   - Add functional requirement for new tool
+   - Update tool requirements section
+
+4. **Update DEVELOPMENT.md**:
+   - Add tool to API reference if it has endpoints
+   - Update "Adding New Tools" section
+
+5. **Update REFERENCE.md**:
+   - Add tool to terminology if needed
+   - Update quick reference
+
+6. **Update CHANGELOG.md**:
+   - Add entry: "Added [tool name] tool"
+
+7. **Update diagrams**:
+   - Update tool architecture diagram
+   - Update flow diagrams if tool affects flows
+
+8. **Update README.md**:
+   - Update navigation if structure changed
+   - Update quick start if tool is prominent
+
+### Example: Database Schema Change
+
+When database schema changes:
+
+1. **Update ARCHITECTURE.md**:
+   - Update Database Schema section
+   - Update collection structure
+   - Update relationships
+
+2. **Update REFERENCE.md**:
+   - Update Database Collections section
+   - Update collection relationships
+
+3. **Update CHANGELOG.md**:
+   - Add entry: "Updated database schema: [collection name]"
+
+4. **Update diagrams**:
+   - Update database schema diagram
+   - Update entity relationship diagrams
+
+### Documentation Update Commands
+
+When user says:
+- "Update the documentation"
+- "Update docs for [feature]"
+- "Document [change]"
+- "Update architecture docs"
+
+**Automatically**:
+1. Analyze code changes since last update
+2. Identify affected documents
+3. Update all relevant canonical documents
+4. Update CHANGELOG.md
+5. Update README.md if needed
+6. Update diagrams from code
+7. Present summary of updates
+
+### Code Analysis for Documentation
+
+**Always analyze**:
+- `server/analyst-api/src/routes/` - API structure
+- `server/analyst-api/src/services/` - Business logic
+- `server/analyst-api/src/symbolic-tools/` - Data operations
+- `apps/analyst-ui/public/js/tools/` - UI tools
+- `apps/analyst-ui/public/js/llm-tools/` - Research Agent
+- Database models and schemas
+- Tool registrations
+- Configuration files
+
+**Extract**:
+- Architecture patterns
+- Data flows
+- Tool definitions
+- API endpoints
+- Database structures
+- Configuration options
+
+### Documentation Quality Standards
+
+- **Accuracy**: Documentation must match code exactly
+- **Completeness**: All features documented
+- **Currency**: Updated when code changes
+- **Clarity**: Clear, concise, well-organized
+- **Examples**: Include code examples where helpful
+- **Cross-references**: Link related sections
+
+### Reverse Engineering Diagrams
+
+**Architecture Diagrams**:
+- Analyze route/service structure
+- Map tool registration
+- Identify data flows
+- Document layer interactions
+
+**Flow Diagrams**:
+- Trace code execution paths
+- Document decision points
+- Show data transformations
+- Include error handling
+
+**Database Diagrams**:
+- Extract from schema definitions
+- Show relationships
+- Document indexes
+- Include constraints
+
+### Maintenance Checklist
+
+When updating documentation, verify:
+- [ ] All affected canonical documents updated
+- [ ] CHANGELOG.md updated with entry
+- [ ] README.md updated if structure changed
+- [ ] Diagrams updated from code
+- [ ] Code examples still work
+- [ ] Links still valid
+- [ ] Cross-references accurate
+- [ ] Terminology consistent
+
+---
+
+## UI/UX Rules
+
+### Mode Consistency Rule
+**CRITICAL**: All UI changes must work in BOTH free mode (floating windows) and fixed mode (GoldenLayout). When implementing features:
+1. Test in both modes
+2. Ensure the same renderer functions work for both
+3. Use relative positioning and container queries that work in both contexts
+4. Never assume a specific layout mode - code must be mode-agnostic
+
+### Modal and AI Features
+- Every popup or modal that uses AI should have a settings icon in the header that displays a modal settings panel showing all prompts used by the modal
+- Any time AI or internet is called, the mach33 AI progress modal should be shown
+- Only use Lucide icons or custom ones the developer provides
+
+### Database Rules
+- All database relations need to use database ID Object ID -- no matching strings!!!
+- When adding new functionality or fixing errors, make sure everything is tested -- use the fix-test-assess cycle until change is working properly -- also ask user to confirm it is working
+
+### Scripts
+- When building a temporary script, place it in ./scripts

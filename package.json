@@ -1,0 +1,25 @@
+{
+  "name": "gravitational-platform",
+  "private": true,
+  "scripts": {
+    "sync": "uv sync --extra numpyro --extra emcee",
+    "redis:start": "docker compose up -d redis",
+    "celery:docker": "docker compose up -d redis celery",
+    "dev": "docker compose up -d redis && sleep 2 && concurrently -n backend,frontend,worker -c blue,green,magenta \"cd backend && REDIS_URL=redis://localhost:6379/0 AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASSWORD=gravitational ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload\" \"cd frontend && npm run dev\" \"cd backend && REDIS_URL=redis://localhost:6379/0 ../.venv/bin/celery -A app.celery_app worker -l info -Q gravitational,dgx -n gravitational_worker@%h\"",
+    "dev:backend": "cd backend && REDIS_URL=redis://localhost:6379/0 AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASSWORD=gravitational ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload",
+    "dev:frontend": "cd frontend && npm run dev",
+    "neo4j:start": "docker compose up -d neo4j",
+    "neo4j:stop": "docker compose stop neo4j",
+    "services:start": "docker compose up -d postgres redis neo4j localstack && sleep 6 && ./scripts/setup-localstack-s3.sh",
+    "s3:start": "docker compose up -d localstack && sleep 5 && ./scripts/setup-localstack-s3.sh",
+    "kill-ports": "lsof -ti :8002 | xargs kill -9 2>/dev/null; lsof -ti :5173 | xargs kill -9 2>/dev/null; echo Ports 8002 and 5173 freed",
+    "start": "docker compose up -d redis && sleep 2 && npm run kill-ports && sleep 2 && concurrently -n backend,frontend,worker -c blue,green,magenta \"cd backend && REDIS_URL=redis://localhost:6379/0 AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASSWORD=gravitational ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload\" \"cd frontend && npx vite --port 5173 --strictPort\" \"cd backend && REDIS_URL=redis://localhost:6379/0 ../.venv/bin/celery -A app.celery_app worker -l info -Q gravitational,dgx -n gravitational_worker@%h\"",
+    "restart": "docker compose up -d redis && sleep 2 && npm run kill-ports && sleep 2 && concurrently -n backend,frontend,worker -c blue,green,magenta \"cd backend && REDIS_URL=redis://localhost:6379/0 AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASSWORD=gravitational ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload\" \"cd frontend && npx vite --port 5173 --strictPort\" \"cd backend && REDIS_URL=redis://localhost:6379/0 ../.venv/bin/celery -A app.celery_app worker -l info -Q gravitational,dgx -n gravitational_worker@%h\"",
+    "start:full": "npm run services:start && sleep 2 && npm run start",
+    "celery:worker": "cd backend && REDIS_URL=redis://localhost:6379/0 ../.venv/bin/celery -A app.celery_app worker -l info -Q gravitational,dgx -n gravitational_worker@%h",
+    "celery:beat": "cd backend && ../.venv/bin/celery -A app.celery_app beat -l info"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

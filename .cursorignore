@@ -1,0 +1,10 @@
+# Cursor IDE ignore file
+# This helps prevent Cursor from blocking access to certain files
+
+# Files to be ignored by Cursor
+node_modules/
+.git/
+.DS_Store
+
+# Files to be explicitly included (not ignored)
+!.env

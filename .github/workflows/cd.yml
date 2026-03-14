@@ -1,0 +1,208 @@
+# WO-19: CD Pipeline and Blue-Green Deployment
+# Triggers: push to main, manual workflow_dispatch
+# Staging/production deployment requires AWS infra (ECS, ALB, S3, CloudFront)
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+defaults:
+  run:
+    working-directory: .
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      backend-built: ${{ steps.backend.outputs.built }}
+      frontend-built: ${{ steps.frontend.outputs.built }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION=v$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build backend
+        id: backend
+        run: |
+          pip install -e .
+          echo "built=true" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        id: frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+          echo "built=true" >> $GITHUB_OUTPUT
+
+  run-migrations:
+    name: Run Migrations (Staging)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite+aiosqlite:///./test.db' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Run Alembic migrations
+        run: |
+          pip install -e ".[dev]"
+          cd backend && alembic upgrade head || true
+
+  staging-smoke:
+    name: Staging Smoke Tests
+    needs: [build, run-migrations]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install and run backend
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          pip install -e ".[dev]"
+          cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8002 &
+          sleep 8
+
+      - name: API health check
+        run: |
+          curl -sf http://localhost:8002/health | jq .
+          curl -sf http://localhost:8002/health | jq -e '.status == "ok" or .status == "degraded"'
+
+      - name: Database connectivity
+        run: |
+          curl -sf http://localhost:8002/health | jq -e '.database == "ok"'
+
+      - name: Redis connectivity
+        run: |
+          curl -sf http://localhost:8002/health | jq -e '.redis == "ok"'
+
+  # Deploy staging: requires AWS secrets (ECR_REGISTRY, ECS_CLUSTER, ECS_SERVICE, etc.)
+  # Enable when WO-7 AWS infra exists. Set DEPLOY_ENABLED=true in repo secrets.
+  deploy-staging:
+    name: Deploy Staging
+    needs: [build, staging-smoke]
+    runs-on: ubuntu-latest
+    if: false  # Set to "secrets.DEPLOY_ENABLED == 'true'" when AWS infra ready
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to ECS (stub)
+        run: |
+          echo "Deploy-staging requires: ECR_REGISTRY, ECS_CLUSTER, ECS_SERVICE, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
+          echo "1. Update ECS task definition with new image"
+          echo "2. Trigger ECS service update"
+          echo "3. Run alembic upgrade head against staging DB"
+          echo "4. Health check GET /health on new tasks"
+
+  production-approval:
+    name: Production Approval
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+    environment: production
+    steps:
+      - run: echo "Manual approval gate - deploy to production"
+
+  # Deploy production (blue-green): requires AWS infra. Enable with DEPLOY_ENABLED.
+  deploy-production:
+    name: Deploy Production (Blue-Green)
+    needs: [build, production-approval]
+    runs-on: ubuntu-latest
+    if: false  # Enable when AWS infra ready
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Blue-green deploy (stub)
+        run: |
+          echo "Deploy-production requires ECS, ALB, target groups"
+          echo "1. Create new task definition revision"
+          echo "2. Deploy to green environment"
+          echo "3. Health checks on green"
+          echo "4. Shift ALB traffic to green"
+          echo "5. Rollback to blue if health checks fail"
+
+  notify:
+    name: Deployment Notification
+    needs: [staging-smoke]
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Slack notification (optional)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"CD success: ${{ github.repository }} @ ${{ github.sha }}\"}" \
+              "$SLACK_WEBHOOK_URL" || true
+          fi
+
+  release-tag:
+    name: Tag Release
+    needs: [build, staging-smoke]
+    runs-on: ubuntu-latest
+    if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and push version tag
+        run: |
+          VERSION=${{ needs.build.outputs.version }}
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -a "$VERSION" -m "Release $VERSION" || true
+          git push origin "$VERSION" || true

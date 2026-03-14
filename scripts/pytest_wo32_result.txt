@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- /Users/jbarseneau/Archimedes/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jbarseneau/Archimedes
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+backend/tests/test_likelihood.py::TestChiSquared::test_ac_lik_001_1_chi2_form PASSED [  9%]
+backend/tests/test_likelihood.py::TestChiSquared::test_ac_lik_001_3_nan_returns_inf PASSED [ 18%]
+backend/tests/test_likelihood.py::TestChiSquared::test_lcdm_finite_chi2 PASSED [ 27%]
+backend/tests/test_likelihood.py::TestJointLikelihood::test_ac_lik_004_1_joint_sum PASSED [ 36%]
+backend/tests/test_likelihood.py::TestJointLikelihood::test_ac_lik_004_2_add_dataset_increases PASSED [ 45%]
+backend/tests/test_likelihood.py::TestChiSquaredBatch::test_batch_matches_sequential PASSED [ 54%]
+backend/tests/test_likelihood.py::TestChiSquaredBatch::test_batch_unphysical_returns_inf PASSED [ 63%]
+backend/tests/test_scans.py::TestRunScan::test_1d_omega_m PASSED         [ 72%]
+backend/tests/test_scans.py::TestRunScan::test_2d_omega_m_h0 PASSED      [ 81%]
+backend/tests/test_scans.py::TestRunScan::test_ac_scn_001_4_unphysical_inf PASSED [ 90%]
+backend/tests/test_scans.py::TestRunScan::test_parallel_scan_80_points PASSED [100%]
+
+============================== 11 passed in 1.94s ==============================

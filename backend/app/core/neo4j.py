@@ -1,0 +1,373 @@
+"""WO-3, WO-20: Neo4j graph database - theory lineage, simulation provenance, citation networks."""
+
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from contextlib import contextmanager
+from typing import Any
+
+from neo4j import GraphDatabase
+
+from app.core.config import settings
+
+
+# Node labels (WO-20)
+LABEL_THEORY = "Theory"
+LABEL_SIMULATION = "Simulation"
+LABEL_OBSERVATION = "Observation"
+LABEL_PUBLICATION = "Publication"
+LABEL_LIKELIHOOD_ANALYSIS = "LikelihoodAnalysis"
+LABEL_MCMC_RUN = "MCMCRun"
+LABEL_ARTIFACT = "Artifact"
+
+# Relationship types (WO-20)
+REL_DERIVED_FROM = "DERIVED_FROM"
+REL_USED_THEORY = "USED_THEORY"
+REL_USED_DATA = "USED_DATA"
+REL_USED_IN = "USED_IN"
+REL_REFERENCES = "REFERENCES"
+REL_CITES_DATA = "CITES_DATA"
+REL_BELONGS_TO = "BELONGS_TO"
+REL_VISUALIZES = "VISUALIZES"
+REL_EVALUATED = "EVALUATED"
+REL_AGAINST_DATA = "AGAINST_DATA"
+REL_BASED_ON = "BASED_ON"
+REL_SAMPLED = "SAMPLED"
+REL_CONSTRAINED_BY = "CONSTRAINED_BY"
+REL_PRODUCED_BY = "PRODUCED_BY"
+
+
+def get_driver():
+    """Create Neo4j driver. Caller must close it."""
+    return GraphDatabase.driver(
+        settings.neo4j_uri,
+        auth=(settings.neo4j_user, settings.neo4j_password),
+        connection_timeout=3.0,
+    )
+
+
+@contextmanager
+def neo4j_session():
+    """Context manager for Neo4j session."""
+    driver = get_driver()
+    try:
+        with driver.session() as session:
+            yield session
+    finally:
+        driver.close()
+
+
+def init_neo4j_schema(session: Any) -> None:
+    """Create indexes on node properties for efficient lookups (WO-20)."""
+    indexes = [
+        (LABEL_THEORY, "id"),
+        (LABEL_THEORY, "identifier"),
+        (LABEL_SIMULATION, "id"),
+        (LABEL_OBSERVATION, "id"),
+        (LABEL_PUBLICATION, "id"),
+        (LABEL_PUBLICATION, "doi"),
+        (LABEL_LIKELIHOOD_ANALYSIS, "id"),
+        (LABEL_MCMC_RUN, "id"),
+        (LABEL_ARTIFACT, "id"),
+    ]
+    for label, prop in indexes:
+        name = f"idx_{label.lower()}_{prop}"
+        try:
+            session.run(
+                f"CREATE INDEX {name} IF NOT EXISTS FOR (n:{label}) ON (n.{prop})"
+            )
+        except Exception:
+            pass
+
+
+# ---- Node upserts (WO-20) ----
+
+def upsert_theory(
+    session: Any,
+    theory_id: str,
+    identifier: str | None = None,
+    version: str | None = None,
+) -> None:
+    """Create or merge Theory node."""
+    session.run(
+        """
+        MERGE (t:Theory {id: $id})
+        ON CREATE SET t.created_at = datetime()
+        SET t.identifier = $identifier, t.version = $version
+        """,
+        id=theory_id,
+        identifier=identifier or "",
+        version=version or "",
+    )
+
+
+def upsert_simulation(
+    session: Any,
+    sim_id: str,
+    theory_id: str,
+    status: str | None = None,
+    duration_sec: float | None = None,
+) -> None:
+    """Create Simulation node and DERIVED_FROM Theory."""
+    session.run(
+        """
+        MERGE (s:Simulation {id: $sim_id})
+        ON CREATE SET s.created_at = datetime()
+        SET s.status = $status, s.duration = $duration
+        WITH s
+        MERGE (t:Theory {id: $theory_id})
+        MERGE (s)-[:DERIVED_FROM]->(t)
+        MERGE (s)-[:USED_THEORY]->(t)
+        """,
+        sim_id=sim_id,
+        theory_id=theory_id,
+        status=status or "pending",
+        duration=duration_sec,
+    )
+
+
+def upsert_observation(
+    session: Any,
+    obs_id: str,
+    checksum: str | None = None,
+    num_points: int | None = None,
+) -> None:
+    """Create Observation node."""
+    session.run(
+        """
+        MERGE (o:Observation {id: $id})
+        ON CREATE SET o.created_at = datetime()
+        SET o.checksum = $checksum, o.num_points = $num_points
+        """,
+        id=obs_id,
+        checksum=checksum or "",
+        num_points=num_points or 0,
+    )
+
+
+def upsert_likelihood_analysis(
+    session: Any,
+    la_id: str,
+    theory_id: str,
+    observation_id: str,
+    chi_squared: float | None = None,
+    parameters_json: str | None = None,
+) -> None:
+    """Create LikelihoodAnalysis node with EVALUATED and AGAINST_DATA."""
+    session.run(
+        """
+        MERGE (la:LikelihoodAnalysis {id: $id})
+        ON CREATE SET la.created_at = datetime()
+        SET la.chi_squared = $chi_squared, la.parameters = $parameters
+        WITH la
+        MERGE (t:Theory {id: $theory_id})
+        MERGE (o:Observation {id: $obs_id})
+        MERGE (la)-[:EVALUATED]->(t)
+        MERGE (la)-[:AGAINST_DATA]->(o)
+        """,
+        id=la_id,
+        theory_id=theory_id,
+        obs_id=observation_id,
+        chi_squared=chi_squared,
+        parameters=parameters_json or "{}",
+    )
+
+
+def upsert_mcmc_run(
+    session: Any,
+    mcmc_id: str,
+    likelihood_analysis_id: str,
+    samples: int | None = None,
+    converged: bool | None = None,
+) -> None:
+    """Create MCMCRun node with BASED_ON."""
+    session.run(
+        """
+        MERGE (m:MCMCRun {id: $id})
+        ON CREATE SET m.created_at = datetime()
+        SET m.samples = $samples, m.converged = $converged
+        WITH m
+        MERGE (la:LikelihoodAnalysis {id: $la_id})
+        MERGE (m)-[:BASED_ON]->(la)
+        """,
+        id=mcmc_id,
+        la_id=likelihood_analysis_id,
+        samples=samples or 0,
+        converged=converged,
+    )
+
+
+def upsert_publication(
+    session: Any,
+    pub_id: str,
+    doi: str | None = None,
+    title: str | None = None,
+) -> None:
+    """Create Publication node."""
+    session.run(
+        """
+        MERGE (p:Publication {id: $id})
+        ON CREATE SET p.created_at = datetime()
+        SET p.doi = $doi, p.title = $title
+        """,
+        id=pub_id,
+        doi=doi or "",
+        title=title or "",
+    )
+
+
+def upsert_artifact(
+    session: Any,
+    artifact_id: str,
+    artifact_type: str | None = None,
+    format_: str | None = None,
+) -> None:
+    """Create Artifact node."""
+    session.run(
+        """
+        MERGE (a:Artifact {id: $id})
+        ON CREATE SET a.created_at = datetime()
+        SET a.type = $type, a.format = $format
+        """,
+        id=artifact_id,
+        type=artifact_type or "",
+        format=format_ or "",
+    )
+
+
+# ---- Relationships (WO-20) ----
+
+def link_simulation_observation(session: Any, sim_id: str, obs_id: str) -> None:
+    """Create USED_DATA: Simulation -> Observation."""
+    session.run(
+        """
+        MATCH (s:Simulation {id: $sim_id}), (o:Observation {id: $obs_id})
+        MERGE (s)-[:USED_DATA]->(o)
+        """,
+        sim_id=sim_id,
+        obs_id=obs_id,
+    )
+
+
+def link_publication_references(session: Any, pub_id: str, theory_ids: list[str]) -> None:
+    """Create REFERENCES: Publication -> Theory."""
+    for tid in theory_ids:
+        session.run(
+            """
+            MATCH (p:Publication {id: $pub_id})
+            MERGE (t:Theory {id: $theory_id})
+            MERGE (p)-[:REFERENCES]->(t)
+            """,
+            pub_id=pub_id,
+            theory_id=tid,
+        )
+
+
+def link_publication_cites_data(session: Any, pub_id: str, obs_ids: list[str]) -> None:
+    """Create CITES_DATA: Publication -> Observation."""
+    for oid in obs_ids:
+        session.run(
+            """
+            MATCH (p:Publication {id: $pub_id}), (o:Observation {id: $obs_id})
+            MERGE (p)-[:CITES_DATA]->(o)
+            """,
+            pub_id=pub_id,
+            obs_id=oid,
+        )
+
+
+def link_artifact_belongs_to(
+    session: Any,
+    artifact_id: str,
+    parent_id: str,
+    parent_label: str,
+) -> None:
+    """Create BELONGS_TO: Artifact -> parent (Theory, Simulation, or Publication)."""
+    labels = {"Theory", "Simulation", "Publication"}
+    if parent_label not in labels:
+        return
+    session.run(
+        f"""
+        MATCH (a:Artifact {{id: $artifact_id}}), (p:{parent_label} {{id: $parent_id}})
+        MERGE (a)-[:BELONGS_TO]->(p)
+        """,
+        artifact_id=artifact_id,
+        parent_id=parent_id,
+    )
+
+
+# ---- Graph query patterns (WO-20) ----
+
+def find_simulations_from_theory(session: Any, theory_id: str) -> list[dict]:
+    """Find all simulations derived from a theory."""
+    result = session.run(
+        """
+        MATCH (t:Theory {id: $theory_id})<-[:DERIVED_FROM]-(s:Simulation)
+        RETURN s.id AS sim_id, s.status AS status
+        ORDER BY s.id
+        """,
+        theory_id=theory_id,
+    )
+    return [rec.data() for rec in result]
+
+
+def trace_provenance_chain(session: Any, sim_id: str) -> dict:
+    """Trace full provenance chain for a simulation."""
+    result = session.run(
+        """
+        MATCH (s:Simulation {id: $sim_id})-[:DERIVED_FROM]->(t:Theory)
+        OPTIONAL MATCH (s)-[:USED_DATA]->(o:Observation)
+        RETURN t.id AS theory_id, collect(o.id) AS observation_ids
+        """,
+        sim_id=sim_id,
+    )
+    rec = result.single()
+    if rec:
+        return {
+            "sim_id": sim_id,
+            "theory_id": rec["theory_id"],
+            "observation_ids": [x for x in (rec["observation_ids"] or []) if x],
+        }
+    return {"sim_id": sim_id, "theory_id": None, "observation_ids": []}
+
+
+def get_theory_lineage(session: Any, theory_id: str) -> dict:
+    """Get theory lineage: simulations that use it, publications that reference it."""
+    result = session.run(
+        """
+        MATCH (t:Theory {id: $theory_id})
+        OPTIONAL MATCH (s:Simulation)-[:DERIVED_FROM]->(t)
+        OPTIONAL MATCH (p:Publication)-[:REFERENCES]->(t)
+        RETURN t.id AS theory_id,
+               collect(DISTINCT s.id) AS simulation_ids,
+               collect(DISTINCT p.id) AS publication_ids
+        """,
+        theory_id=theory_id,
+    )
+    rec = result.single()
+    if rec:
+        return {
+            "theory_id": rec["theory_id"],
+            "simulation_ids": [x for x in (rec["simulation_ids"] or []) if x],
+            "publication_ids": [x for x in (rec["publication_ids"] or []) if x],
+        }
+    return {"theory_id": theory_id, "simulation_ids": [], "publication_ids": []}
+
+
+def check_neo4j_available(timeout_sec: float = 5.0) -> bool:
+    """Check if Neo4j is reachable. Uses timeout to avoid blocking startup when Neo4j is down."""
+    def _check() -> bool:
+        try:
+            driver = get_driver()
+            driver.verify_connectivity()
+            driver.close()
+            return True
+        except Exception:
+            return False
+
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = ex.submit(_check)
+        return future.result(timeout=timeout_sec)
+    except (FuturesTimeoutError, Exception):
+        return False
+    finally:
+        ex.shutdown(wait=False)

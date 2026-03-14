@@ -1,0 +1,7 @@
+# Run on the DGX machine. No Redis or other deps.
+services:
+  heartbeat:
+    build: .
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
